@@ -1,0 +1,102 @@
+---
+title: "Práctica  4 MJB "
+author: "Irene Extremera Serrano"
+date: "04/5/2020"
+output: word_document
+---
+
+```{r,warning=FALSE, error=FALSE}
+library(urca)
+library(coda)
+library(boot)
+library(R2WinBUGS)
+```
+
+#Ejercicio 1:Poisson
+
+```{r,warning=FALSE, error=FALSE}
+#Modelos
+modelo<-function(){
+  for(i in 1:n){
+  uci[i]~dpois(lambda) #verosimiltud
+  }
+  lambda~dgamma(0.01,0.01) #valores iniciales
+  }
+
+#Datos
+datos<-list(uci=c(1295,1338,1785,2107,2084,1376,543,956,882,1237),n=10)
+  
+#Valores iniciales
+iniciales1<-function(){list(lambda=0.01)
+  list(lambda=0.05)
+  list(lambda=0.09)}
+
+#Parámetros
+parametro<-c('lambda')
+
+#Resultados
+resul1<-bugs(model=modelo,data=datos,inits=iniciales1,param=parametro,n.iter=100000,n.burnin=10000)
+
+```
+
+```{r,fig.width=15,fig.height=4,warning=FALSE, error=FALSE}
+plot(resul1$sims.array[,1,1],type='l',main='Media de ingresos (lambda)', xlab='Iteraciones',ylab='Media de ingresos (lambda)')
+lines(resul1$sims.array[,2,1],col='GREEN')
+```
+
+```{r,warning=FALSE, error=FALSE}
+# Media a posteriori
+resul1[["mean"]][["lambda"]]/7
+
+# Intervalo de confianza al 95%
+summary(resul1$sims.array[,,1]/7) 
+
+#Divido entre siete debido a que los datos proporcionados son semanales y quiero ver el número de ingresos diario
+```
+
+En las tres cadenas se aprecia una media de 194 ingresos en la UCI diarios, este valor oscila entre 189 ingresos diarios como mínimo y 199 ingresos como máximo. Esto quiere decir que la cantidad de ingresos durante estas diez semanas ha sido desmesurado.
+
+
+#Ejercicio 2: Binomial
+
+```{r,warning=FALSE, error=FALSE}
+#Modelos
+modelo<- function(){
+  for(i in 1:nobs){
+  uci[i]~dbin(probb,hos[i]) 
+  }
+  probb~dbeta(0.01,0.01)
+  }
+  
+#Datos
+datos<-list(uci=c(1295,1338,1785,2107,2084,1376,543,956,882,1237),hos=c(16174,18606,20935, 23497,19802,13581,9153,10479,8548,15161),nobs=10)
+
+#Valores iniciales
+iniciales1<-function(){list(probb=0.05)
+  list(probb=0.02)
+  list(probb=0.08)}
+
+#Parámetros
+parametro<-c('probb')
+
+#Resultados
+resul2<-bugs(model=modelo,data=datos,inits=iniciales1,param=parametro,n.iter=10000,bugs.directory="C:/Program Files/WinBUGS14", WINE=WINE, debug = TRUE,, n.burnin = 1000)
+```
+
+```{r,fig.width=15,fig.height=4,warning=FALSE, error=FALSE}
+plot(resul2$sims.array[,1,1],type='l',main='Proporción de ingresos (Probb)', xlab='Iteraciones',ylab='Proporción de ingresos (Probb)')
+lines(resul2$sims.array[,2,1],col='GREEN')
+```
+
+```{r,warning=FALSE, error=FALSE}
+# Media a posteriori
+resul2[["mean"]][["probb"]]*100
+
+# Intervalo de confianza al 95%
+summary(resul2$sims.array[,,1])
+```
+
+Que un 8,72% de los ingresos hospitalarios terminan en derivando al ingreso en UCI. Este porcentaje oscila entre 8.53% como mínimo y 8,92% como máximo.
+
+
+

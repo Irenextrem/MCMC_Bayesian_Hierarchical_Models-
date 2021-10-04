@@ -1,0 +1,166 @@
+---
+title: "Práctica 8 Modelos Jerárquicos Bayesianos"
+author: "Irene Extremera Serrano"
+date: "26/5/2020"
+output: word_document
+---
+
+<!-- ```{r global_options, include=FALSE, message=FALSE,fig.align="center"} -->
+<!--  knitr::opts_chunk$set(warning=FALSE) -->
+<!-- ``` -->
+
+ <!-- fig.width=10,fig.height=4 -->
+ 
+<!-- warning=FALSE, error=FALSE, echo=TRUE-->
+
+```{r}
+library(urca)
+library(coda)
+library(boot)
+library(R2WinBUGS)
+```
+
+```{r}
+setwd('D:/Desktop/Remember/Estudios/Educación Formal/Máster/Máster Valencia/Bioestadística/Curso 1/20 3-6Modelización Avanzada/Modelos Bayesianos/Prácticas/8')
+load('D:/Desktop/Remember/Estudios/Educación Formal/Máster/Máster Valencia/Bioestadística/Curso 1/20 3-6Modelización Avanzada/Modelos Bayesianos/Prácticas/8/Tabla4.Rdata')
+dias <- 1:48
+dias <- (dias-mean(dias))/100
+dias2 <- dias^2
+```
+
+En esta práctica se ha decidido definir la variable días de esta forma para favorecer la convergencia de las cadenas pues de la otra forma se generaban valores muy elevados.
+
+```{r}
+
+#Modelo cuadrático con efectos aleatorios independientes
+Modec <- function(){
+# Verosimilitud
+for (i in 1:n) {
+fall[i] ~ dpois(lambda[i])
+log(lambda[i]) <- alfa + beta * dias[i]+gamma*dias2[i]+a[i]
+}
+
+#Efecto aleatorio
+for(i in 1:n){
+  a[i] ~ dnorm(0,tau.a)}
+
+  
+# Distribuciones iniciales
+alfa ~ dflat()
+beta ~ dflat()
+gamma ~ dflat()
+tau.a<-pow(sd.a,-2)
+sd.a~dunif(0,100)
+
+# predictiva
+  for(i in 1:n){
+  ynew[i] ~ dpois(lambda3[i])
+  log(lambda3[i]) <- alfa + beta * dias[i]+gamma*dias2[i]+a[i]}
+}
+
+#Datos
+datos <- list(fall = Tabla$fallecidos, dias= dias,dias2=dias2, n = 48)
+
+#Iniciales
+iniciales <- function() {
+  list(alfa = rnorm(1,0,.01), beta = rnorm(1, 0, .01), gamma=rnorm(1, 0, .01), a = rnorm(48, 0, .01), sd.a = runif(1,0, 10), ynew= rpois(48,.01))}
+
+#Parámetros
+param <- c('alfa','beta','gamma','ynew','a')
+
+#Resultados
+ResucFAI <- bugs(data = datos, inits = iniciales, parameters = param, model = Modec,n.iter=8000,n.burnin=3000)
+```
+
+```{r}
+set.seed(7)
+#Modelo cuadrático autoregresivo
+Modec <- function(){
+# Verosimilitud
+for (i in 1:n) {
+fall[i] ~ dpois(lambda[i])
+log(lambda[i]) <- alfa + beta * dias[i]+gamma*dias2[i] + a[i]
+}
+
+# Factor aleatorio
+a[1] ~ dflat()
+for (i in 2:48) {
+x[i] <- b*a[i - 1]
+a[i] ~ dnorm(x[i], tau.a)
+}
+
+  
+# Distribuciones iniciales
+alfa ~ dflat()
+beta ~ dflat()
+gamma ~ dflat()
+tau.a<-pow(sd.a,-2)
+sd.a ~ dunif(0,100)
+b ~ dflat()
+c <- 0
+
+# predictiva
+  for(i in 1:n){
+  ynew[i] ~ dpois(lambda[i])}
+}
+
+#Datos
+datos <- list(fall = Tabla$fallecidos, dias= dias,dias2=dias2, n = 48)
+
+#Iniciales
+iniciales <- function() {
+  list(alfa = rnorm(1,.01,.01), beta = rnorm(1, 0, .01), gamma=rnorm(1, 0, .01), a = rnorm(48, 0, .01), sd.a = runif(1,0, 10), ynew= rpois(48,.01),b= rnorm(1,.01,.01))}
+
+#Parámetros
+param <- c('alfa','beta','gamma','ynew','a')
+
+#Resultados
+ResucAR1 <- bugs(data = datos, inits = iniciales, parameters = param, model = Modec,n.iter=8000,n.burnin=3000)
+```
+
+```{r,fig.width=14,fig.height=5}
+round(ResucAR1$summary, 2)[1:3,] #Comprobar que está bien n.iter
+list <- ResucAR1$sims.array
+
+par(mfrow=c(1,3))
+#Alfa plot
+plot(list[,1,1],type='l', main='Alfa',ylim=c(3.7,4.5))
+lines(list[,2,1],col='green',type='l')
+lines(list[,3,1],col='blue',type='l')
+
+#Beta plot
+plot(list[,1,2],type='l', main='Beta',ylim=c(5,11))
+lines(list[,2,2],col='green',type='l')
+lines(list[,3,2],col='blue',type='l')
+
+#Gamma plot
+plot(list[,1,3],type='l', main='Gamma',ylim=c(-10,9))
+lines(list[,2,3],col='green',type='l')
+lines(list[,3,3],col='blue',type='l')
+```
+
+Aunque los valores de los coeficientes no llegen a converger se quedan oscilando entorno a unos valores cercanos, la convergencia podría obtenerse aumentando el número de iteraciones y el periodo de burning.
+
+```{r}
+ResucFAI$DIC
+ResucAR1$DIC
+```
+
+De ambos modelos el que presenta un menor DIC es el modelo autoregresivo con un valor de 556.779 frente a un valor de 557.471 obtenido por el modelo cuadrático de efectos aleatorios. Aun así, ambos valores son muy parecidos.
+
+```{r}
+par(mfrow=c(1,2))
+# Factores aleatorios independientes
+plot(Tabla$fallecidos,type='p',main='Fc. Al. Independientes',ylim=c(0,5000),ylab='Fallecidos')
+lines(ResucFAI$summary[4:52,1], col='pink')
+lines(ResucFAI$summary[4:52,3], col='blue')
+lines(ResucFAI$summary[4:52,7], col='blue')
+
+# AR(1)
+plot(Tabla$fallecidos,type='p',main='AR1 Fallecidos',ylab='Fallecidos',ylim=c(0,5000))
+lines(ResucAR1$summary[4:52,1], col='pink')
+lines(ResucAR1$summary[4:52,3], col='blue')
+lines(ResucAR1$summary[4:52,7], col='blue')
+```
+
+En las gráficas anteriores se puede comprobar que tanto los valores estimados por ambos modelos como sus intervalos de confianza al 95% son muy parecidos.

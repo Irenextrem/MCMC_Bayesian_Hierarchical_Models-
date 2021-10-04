@@ -1,0 +1,278 @@
+---
+title: "Práctica 2 Obligatoria MJB"
+author: "Irene Extremera Serrano"
+date: "10/5/2020"
+output: word_document
+---
+
+<!-- ```{r global_options, include=FALSE, message=FALSE,fig.align="center"} -->
+<!--  knitr::opts_chunk$set(warning=FALSE) -->
+<!-- ``` -->
+
+ <!-- fig.width=10,fig.height=4 -->
+ 
+<!-- warning=FALSE, error=FALSE, echo=TRUE-->
+
+```{r,warning=FALSE, error=FALSE}
+library(urca)
+library(coda)
+library(boot)
+library(R2WinBUGS)
+```
+
+# Modeliza mediante un modelo de regresión lineal simple el número diario de fallecidos como función del número de casos confirmados observados cada día. Repite dicho modelo empleando como covariables, de forma separada, el número de casos hospitalizados y el número de ingresos en UCI. ¿Consideras que en todos los casos la variable explicativa que has empleado tiene un efecto ‘significativo’ sobre el número de defunciones observadas? cuantifica la probabilidad de que exista dicha relación ¿Qué variable crees que explica de mejor manera el número de defunciones diarias por Covid?
+
+Primero preparo las variables.
+
+```{r}
+load("D:/Desktop/Remember/Estudios/Educación Formal/Máster/Máster Valencia/Bioestadística/Curso 1/20 3-6Modelización Avanzada/Modelos Bayesianos/Prácticas/5/Tabla2.Rdata")
+
+#Variables
+fall <- Tabla$fallecidos
+cas <- Tabla$casos
+hospitalizados <- Tabla$hospitalizados
+UCI <- Tabla$uci
+```
+
+Lo segundo es realizar los tres modelos en los que la variable respuesta fallecidos se enfrenta a las variables casos, hospitalizados y uci individualmente.
+
+```{r}
+#Fallecidos vs Casos 
+modelo <- function() {
+# Verosimilitud
+for (i in 1:n) {
+fallecidos[i] ~ dnorm(mu[i], tau)
+mu[i] <- beta0 + beta1 * casos[i]
+}
+#Distribuciones iniciales
+beta0 ~ dnorm(0.1,0.1)
+beta1 ~ dnorm(0.1,0.1)
+tau ~ dgamma(0.01, 0.01)
+P.beta0<-step(beta0) 
+P.beta1<-step(beta1)
+}
+
+#
+#Datos
+datos<-list(fallecidos=fall,casos=cas,n=36)
+#Valores iniciales
+iniciales1<-function(){list(tau=0.01,beta0=0.01,beta1=0.01,mu=2961)
+  list(tau=0.05,beta0=0.005,beta1=0.005,mu=3500)
+  list(tau=0.09,beta0=0.009,beta1=0.009,mu=1000)}
+#Parámetros
+parametro<-c('tau','beta0','beta1','mu','P.beta0','P.beta1')
+
+#Resultados
+resulc<-bugs(model=modelo,data=datos,inits=iniciales1,param=parametro,n.iter=100000,n.burnin=10000)
+```
+
+```{r}
+#Fallecidos vs Hospitalizados
+modelo <- function() {
+# Verosimilitud
+for (i in 1:n) {
+fallecidos[i] ~ dnorm(mu[i], tau)
+mu[i] <- beta0 + beta1 * hospital[i]
+}
+#Distribuciones iniciales
+beta0 ~ dnorm(0.1,0.1)
+beta1 ~ dnorm(0.1,0.1)
+tau ~ dgamma(0.01, 0.01)
+P.beta0<-step(beta0) 
+P.beta1<-step(beta1)
+}
+
+#
+#Datos
+datos<-list(fallecidos=fall,hospital=hospitalizados,n=36)
+#Valores iniciales
+iniciales1<-function(){list(tau=0.01,beta0=0.01,beta1=0.01,mu=2961)
+  list(tau=0.05,beta0=0.005,beta1=0.005,mu=3500)
+  list(tau=0.09,beta0=0.009,beta1=0.009,mu=1000)}
+#Parámetros
+parametro<-c('tau','beta0','beta1','mu','P.beta0','P.beta1')
+
+#Resultados
+resulh<-bugs(model=modelo,data=datos,inits=iniciales1,param=parametro,n.iter=100000,n.burnin=10000)
+```
+
+```{r}
+#Fallecidos vs Uci
+modelo <- function() {
+# Verosimilitud
+for (i in 1:n) {
+fallecidos[i] ~ dnorm(mu[i], tau)
+mu[i] <- beta0 + beta1 * uci[i]
+}
+#Distribuciones iniciales
+beta0 ~ dnorm(0.1,0.1)
+beta1 ~ dnorm(0.1,0.1)
+tau ~ dgamma(0.01, 0.01)
+P.beta0<-step(beta0) 
+P.beta1<-step(beta1)
+}
+
+#
+#Datos
+datos<-list(fallecidos=fall,uci=UCI,n=36)
+  
+#Valores iniciales
+iniciales1<-function(){list(tau=0.01,beta0=0.01,beta1=0.01,mu=2961)
+  list(tau=0.005,beta0=0.005,beta1=0.005,mu=3500)
+  list(tau=0.009,beta0=0.009,beta1=0.009,mu=1000)}
+#Parámetros
+parametro<-c('tau','beta0','beta1','mu','P.beta0','P.beta1')
+
+#Resultados
+resuluci<-bugs(model=modelo,data=datos,inits=iniciales1,param=parametro,n.iter=100000,n.burnin=10000)
+```
+
+```{r}
+c <- resulc[["sims.array"]]
+h <- resulh[["sims.array"]]
+u <- resuluci[["sims.array"]]
+```
+
+```{r}
+resulc$mean$P.beta0
+resulc$mean$P.beta1
+
+resulh$mean$P.beta0
+resulh$mean$P.beta1
+
+resuluci$mean$P.beta0
+resuluci$mean$P.beta1
+```
+
+En todos los casos la variable explicativa tiene un efecto significativo en el número de defunciones observadas. Esto es debido a que la probabilidad de que el b1 en todos los modelos sea mayor que 0 es prácticamente de 1.
+
+Para poder identificar qué variable explica de mejor manera el número de defunciones diarias por cov-19 me fijo en el DIC de los modelos y me quedaré con el modelo cuyo DIC sea más bajo, y por lo tanto la variable explicativa sea la mejor.
+
+```{r}
+resulc$DIC
+resulh$DIC
+resuluci$DIC
+```
+
+El modelo con un DIC más bajo es aquel cuya variable explicativa es el número de casos confirmados observados cada día.
+
+# Para el modelo que hayas considerado más oportuno en el apartado 1 incluye el resto de covariables consideradas en dicho apartado ¿Consideras oportuno incluir alguna de estas variables como covariable adicional en el modelo en presencia de la covariable que ya hubieras incluido originalmente?
+
+Genero el modelo con todas las covariables.
+
+```{r}
+#Todas
+modelo <- function() {
+# Verosimilitud
+for (i in 1:n) {
+fallecidos[i] ~ dnorm(mu[i], tau)
+mu[i] <- beta0 + beta1 * casos[i] + beta2*hospital[i]+beta3*uci[i]
+}
+#Distribuciones iniciales
+beta0 ~ dnorm(0.1,0.1)
+beta1 ~ dnorm(0.1,0.1)
+beta2 ~ dnorm(0.1,0.1)
+beta3 ~ dnorm(0.1,0.1)
+tau ~ dgamma(0.01, 0.01)
+P.beta0<-step(beta0) 
+P.beta1<-step(beta1)
+P.beta2<-step(beta2) 
+P.beta3<-step(beta3)
+}
+
+#
+#Datos
+datos<-list(fallecidos=fall,casos=cas,hospital=hospitalizados,uci=UCI,n=36)
+#Valores iniciales
+iniciales1<-function(){list(tau=0.01,beta0=0.01,beta1=0.01,beta2=0.01,beta3=0.01,mu=2961)
+  list(tau=0.05,beta0=0.005,beta1=0.005,beta2=0.005,beta3=0.005,mu=3500)
+  list(tau=0.09,beta0=0.009,beta1=0.009,beta2=0.009,beta3=0.009,mu=1000)}
+#Parámetros
+parametro<-c('tau','beta0','beta1','beta2','beta3','mu','P.beta0','P.beta1','P.beta2','P.beta3')
+
+#Resultados
+resulall<-bugs(model=modelo,data=datos,inits=iniciales1,param=parametro,n.iter=100000,n.burnin=10000)
+```
+
+Observo la 'significatividad' de cada uno de los coeficientes.
+
+```{r}
+resulall$mean$P.beta0
+resulall$mean$P.beta1
+resulall$mean$P.beta2
+resulall$mean$P.beta3
+```
+
+A la vista de los resultados obtenidos se puede observar que casos y hospitalizaciones la cantidad de valores superiores a 0 es bastante grande, lo cual hace que tome un valor muy cercano a uno. Esto es indicativo de que ambos coeficientes tienen una influencia positiva con respecto a la variable respuesta, siendo la influencia del coeficiente b1 que acompaña a casos de (0.997) mayor que la de b2 que acompaña a hospitalizaciones (0.838).
+
+En contraposición a lo anterior, el valor del b3 es de 0.339, lo cual lo deja no muy cercano a 1 y más bien situándolo en un punto intermedio entre 0 y 1. Este valor indica que la relación entre la variable explicativa uci y fallecimientos es ligeramente negativa pero no muy 'significativa'. 
+
+Por lo tanto, a modo de conclusión, en caso de querer incluir en mi modelo alguna de las covariables anteriores sería hospitalizaciones y casos y descartaría la variable uci.
+
+# Para la variable y modelo de regresión que hayas considerado más oportuno en el apartado 1 determina la distribución predictiva del número de defunciones en caso de que el valor máximo observado de la covariable hubiera sido un 10% superior de lo que realmente ha sido ¿Qué probabilidad consideras de que el número defunciones observadas en ese caso superara al máximo número de muertes observadas en toda la serie de defunciones?
+
+Primero calculo cuánto valdría el valor máximo de casos mas el diez por ciento.
+
+```{r}
+#10% del valor máximo de casos
+((max(cas)*10)/100)+max(cas)
+```
+
+A continuación genero el modelo que incluya la distribución predictiva de los fallecimientos sustituyendo la covariable casos por el valor máximo de casos mas un 10%.
+
+```{r}
+#Fallecidos vs Casos 10%
+modelo <- function() {
+# Verosimilitud
+for (i in 1:n) {
+fallecidos[i] ~ dnorm(mu[i], tau)
+mu[i] <- beta0 + beta1 * casos[i]
+}
+#Distribuciones iniciales
+beta0 ~ dnorm(0.1,0.1)
+beta1 ~ dnorm(0.1,0.1)
+tau ~ dgamma(0.01, 0.01)
+# predictiva
+y.star ~ dnorm(d.star, tau)
+d.star <- beta0 + beta1 * 64991.3
+}
+#
+#Datos
+datos<-list(fallecidos=Tabla$fallecidos,casos=Tabla$casos,n=36)
+#Valores iniciales
+iniciales1<-function(){list(tau=0.01,beta0=0.01,beta1=0.01,mu=2961,y.star=0.01)
+  list(tau=0.05,beta0=0.005,beta1=0.005,mu=3500,y.star=0.05)
+  list(tau=0.09,beta0=0.009,beta1=0.009,mu=1000,y.star=0.09)}
+#Parámetros
+parametro<-c('tau','beta0','beta1','mu','y.star','d.star')
+
+#Resultados
+resul_10<-bugs(model=modelo,data=datos,inits=iniciales1,param=parametro,n.iter=100000,n.burnin=10000)
+```
+
+Una vez que tengo la distribución predictiva del número de fallecimientos calculo la probabilidad de que el número de fallecimientos predichos sea mayor al número de fallecimientos observados.
+
+```{r}
+#Probabilidad de que el número de casos previstos supere al número de muertes observadas
+predictiva <- resul_10[["sims.list"]][["y.star"]]
+sum((predictiva>max(fall))*1)/length(predictiva)
+```
+
+La probabilidad de que el número de fallecimientos predichos sea mayor al máximo de número de fallecimientos observados es del 0.625%. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

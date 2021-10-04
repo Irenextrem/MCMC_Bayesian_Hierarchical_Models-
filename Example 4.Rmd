@@ -1,0 +1,241 @@
+---
+title: "Práctica 7 MJB"
+author: "Irene Extremera Serrano"
+date: "19/5/2020"
+output: word_document
+---
+
+<!-- ```{r global_options, include=FALSE, message=FALSE,fig.align="center"} -->
+<!--  knitr::opts_chunk$set(warning=FALSE) -->
+<!-- ``` -->
+
+ <!-- fig.width=10,fig.height=4 -->
+ 
+<!-- warning=FALSE, error=FALSE, echo=TRUE-->
+
+```{r}
+library(urca)
+library(coda)
+library(boot)
+library(R2WinBUGS)
+```
+
+```{r}
+setwd('D:/Desktop/Remember/Estudios/Educación Formal/Máster/Máster Valencia/Bioestadística/Curso 1/20 3-6Modelización Avanzada/Modelos Bayesianos/Prácticas/7')
+load('D:/Desktop/Remember/Estudios/Educación Formal/Máster/Máster Valencia/Bioestadística/Curso 1/20 3-6Modelización Avanzada/Modelos Bayesianos/Prácticas/7/Tabla4.Rdata')
+dias <- 1:48
+dias <- (dias-mean(dias))/100
+dias2 <- dias^2
+```
+
+
+# Apartado 1 
+
+El modelo siguiente presentará como covariables día en forma cuadrática y para añadirle flexibilidad un efecto aleatorio normal que será diferente en función de cada día.
+
+```{r}
+#Modelo cuadrático
+Modec <- function(){
+# Verosimilitud
+for (i in 1:n) {
+fall[i] ~ dpois(lambda[i])
+log(lambda[i]) <- alfa + beta * dias[i]+gamma*dias2[i]+a[i]
+}
+
+#Efecto aleatorio
+for(i in 1:n){
+  a[i] ~ dnorm(0,tau.a)}
+
+  
+# Distribuciones iniciales
+alfa ~ dflat()
+beta ~ dflat()
+gamma ~ dflat()
+tau.a<-pow(sd.a,-2)
+sd.a~dunif(0,100)
+
+# predictiva
+  for(i in 1:n){
+  ynew[i] ~ dpois(lambda3[i])
+  log(lambda3[i]) <- alfa + beta * dias[i]+gamma*dias2[i]+a[i]}
+}
+
+#Datos
+datos <- list(fall = Tabla$fallecidos, dias= dias,dias2=dias2, n = 48)
+
+#Iniciales
+iniciales <- function() {
+  list(alfa = rnorm(1, 5,.1), beta = rnorm(1, -1,.1), gamma= rnorm(1, -5, .1), a = rnorm(48, .01, .001), sd.a = runif(1,0, 10), ynew= rpois(48,.01))}
+
+#Parámetros
+param <- c('alfa','beta','gamma','ynew','a')
+
+#Resultados
+Resuc <- bugs(data = datos, inits = iniciales, parameters = param, model = Modec,n.iter=8000,n.burnin=3000)
+```
+
+A continuación para comprobar que se ha producido una estimación satisfactoria de los distintos parámetros se realizará un summary del modelos y se observará el número efectivo de simulaciones y se realizará un plot de las mismas.
+
+```{r}
+round(Resuc$summary, 2)[1:3,] #Comprobar que está bien n.iter
+list <- Resuc$sims.array
+
+#Alfa plot
+plot(list[,1,1],type='l', main='Alfa')
+lines(list[,2,1],col='green',type='l')
+lines(list[,3,1],col='blue',type='l')
+
+#Beta plot
+plot(list[,1,2],type='l', main='Beta')
+lines(list[,2,2],col='green',type='l')
+lines(list[,3,2],col='blue',type='l')
+
+#Gamma plot
+plot(list[,1,3],type='l', main='Gamma')
+lines(list[,2,3],col='green',type='l')
+lines(list[,3,3],col='blue',type='l')
+```
+
+# Apartado 2
+
+Para comprobar que ha habido una mejora en el modelo a nivel predictivo se observa la frecuencia en la que los valores observados se encuentran dentro de sus distribuciones predictivas.
+
+```{r}
+ip <- Resuc$summary[4:51,c(3,7)] 
+sum((ip[,1]<Tabla$fallecidos & Tabla$fallecidos<ip[,2])*1)/48
+```
+
+La frecuencia resultante es de 1, lo cual quiere decir que todas las distribuciones predictivas incluyen el valor observado del cual se han generado. Esto es indicativo de que el modelo es bastante bueno en comparación al obtenido en la práctica anterior que era de 0.05.
+
+# Apartado 3
+
+En este apartado se valorará si es necesario el ajuste cuadrático de la variable día dentro del modelo o tal vez sea mejor utilizar un ajuste con solo efectos aleatorios.
+
+Para ello se realizará un modelo sin el ajuste cuadrático y otro únicamente con efectos aleatorios.
+
+```{r}
+#Modelo cuadrático
+Modec3 <- function(){
+# Verosimilitud
+for (i in 1:n) {
+fall[i] ~ dpois(lambda[i])
+log(lambda[i]) <- alfa + beta * dias[i]+a[i]
+}
+
+#Efecto aleatorio
+for(i in 1:n){
+  a[i] ~ dnorm(0,tau.a)}
+
+  
+# Distribuciones iniciales
+alfa ~ dflat()
+beta ~ dflat()
+tau.a<-pow(sd.a,-2)
+sd.a~dunif(0,100)
+
+# predictiva
+  for(i in 1:n){
+  ynew[i] ~ dpois(lambda[i])}
+}
+
+#Datos
+datos <- list(fall = Tabla$fallecidos, dias= dias, n = 48)
+
+#Iniciales
+iniciales <- function() {
+  list(alfa = rnorm(1, 1,.01), beta = rnorm(1, .7,.01), a = rnorm(48, .01, .001), sd.a = runif(1,0, 10), ynew= rpois(48,.01))}
+
+#Parámetros
+param <- c('alfa','beta','ynew','a')
+
+#Resultados
+Resuc3 <- bugs(data = datos, inits = iniciales, parameters = param, model = Modec3,n.iter=8000,n.burnin=3000)
+```
+
+```{r}
+#Modelo de solo efectos aleatorios
+Modec <- function() {
+# Verosimilitud
+for (i in 1:n) {
+fall[i] ~ dpois(lambda[i])
+log(lambda[i]) <- alfa +a[i]
+}
+
+#Efecto aleatorio
+for(i in 1:48){
+  a[i]~dnorm(0,tau.a)
+}
+  
+# Distribuciones iniciales
+alfa ~ dflat()
+tau.a<-pow(sd.a,-2)
+sd.a~dunif(0,100)
+
+# predictiva
+  for(i in 1:n){
+  ynew[i] ~ dpois(lambda3[i])
+  log(lambda3[i]) <- alfa +a[i]}
+}
+
+#Datos
+datos <- list(fall = Tabla$fallecidos, n = 48)
+
+#Iniciales
+iniciales <- function() {
+  list(alfa = rnorm(1, .5 ,1), a = rnorm(48, 0, 5), sd.a = runif(1,0, 10),ynew= rpois(48,.01))
+}
+
+#Parámetros
+param <- c('alfa','ynew')
+
+#Resultados
+Resuc4 <- bugs(data = datos, inits = iniciales, parameters = param,model = Modec,n.iter=8000,n.burnin=3000)
+```
+
+A continuación se comprobará la convergencia de los coeficientes.
+
+```{r}
+round(Resuc3$summary, 2)[1:2,] #Comprobar que está bien n.iter
+list <- Resuc3$sims.array
+par(mfrow=c(1,2))
+#Alfa plot
+plot(list[,1,1],type='l',main='Alfa (Sin cuadrático)')
+lines(list[,2,1],col='green',type='l')
+lines(list[,3,1],col='blue',type='l')
+
+#Beta plot
+plot(list[,1,2],type='l',main='Beta (Sin cuadrático)')
+lines(list[,2,2],col='green',type='l')
+lines(list[,3,2],col='blue',type='l')
+```
+
+```{r}
+round(Resuc4$summary, 2)[1,] #Comprobar que está bien n.iter
+list <- Resuc4$sims.array
+
+#alfa plot
+plot(list[,1,2],type='l', main='Alfa (Solo ef. al)')
+lines(list[,2,2],col='green',type='l')
+lines(list[,3,2],col='blue',type='l')
+```
+
+Se puede observar que las cadenas oscilan cerca de los mismos valores pero parece que no terminan de converger. Sin embargo, esto puede mejorarse aumentando el número de simulaciones y el periodo de burning, por ejemplo a 1000000 simulaciones y un periodo de calentamiento de 100000. En esta ocasión se han elegido esos valores debido a toda la carga computacional que conlleva. 
+
+```{r}
+ip <- Resuc3$summary[3:50,c(3,7)]
+sum((ip[,1]<Tabla$fallecidos & Tabla$fallecidos<ip[,2])*1)/48
+
+ipi <- Resuc4$summary[2:49,c(3,7)]
+sum((ipi[,1]<Tabla$fallecidos & Tabla$fallecidos<ipi[,2])*1)/48
+```
+ 
+De esta forma se comprueba que ambos modelos incluyen en sus predictivas los valores a partir de los cuales se han generado, por lo tanto ambos modelos tienen pinta de ser buenos. Por lo tanto, una forma de valorar cuál de los dos sería mejor será mirando el DIC de cada uno.
+
+```{r}
+Resuc3$DIC;Resuc4$DIC; Resuc$DIC
+```
+
+Los valores de DIC de los tres modelos propuestos muestran que el son muy pero que muy parecidos, por lo tanto lo idóneo sería quedarse con el modelo menos complejo de los tres y en este caso sería aquel que solo incluye los factores aleatorios: $log(\lambda)=\alpha+a_i$
+
+
+
